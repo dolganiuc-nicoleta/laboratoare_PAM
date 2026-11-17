@@ -1,8 +1,8 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/result.dart';
-import '../../domain/entities/product.dart';
-import '../../domain/usecases/get_product_by_id.dart';
+import '../../domain/entities/product_detail.dart';
+import '../../domain/usecases/get_product_details.dart';
 
 sealed class DetailsState {
   const DetailsState();
@@ -18,22 +18,23 @@ class DetailsError extends DetailsState {
 }
 
 class DetailsLoaded extends DetailsState {
-  final Product product;
+  final ProductDetail product;
   const DetailsLoaded(this.product);
 }
 
-// Cubit separat pentru ecranul de detalii: fiecare ecran are propria stare.
+// Cubit separat pentru ecranul produsului: fiecare ecran are propria stare.
 class ProductDetailsCubit extends Cubit<DetailsState> {
-  final GetProductById getProductById;
-  ProductDetailsCubit(this.getProductById) : super(const DetailsLoading());
+  final GetProductDetails getProductDetails;
+  final String productId;
+  ProductDetailsCubit(this.getProductDetails, this.productId) : super(const DetailsLoading());
 
-  Future<void> load(int id) async {
+  Future<void> load() async {
     emit(const DetailsLoading());
-    final result = await getProductById(id);
+    final result = await getProductDetails(productId);
     switch (result) {
-      case Ok<Product>(:final value):
+      case Ok<ProductDetail>(:final value):
         emit(DetailsLoaded(value));
-      case Err<Product>(:final failure):
+      case Err<ProductDetail>(:final failure):
         emit(DetailsError(failure.message));
     }
   }

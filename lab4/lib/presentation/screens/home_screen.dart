@@ -1,130 +1,209 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
-import '../../domain/repositories/product_repository.dart';
-import '../../domain/usecases/get_product_by_id.dart';
-import '../cubit/product_details_cubit.dart';
-import '../cubit/products_cubit.dart';
+import '../../domain/entities/feed.dart';
+import '../cubit/home_cubit.dart';
+import '../navigation.dart';
+import '../widgets/banner_card.dart';
 import '../widgets/product_card.dart';
+import '../widgets/section_header.dart';
 import '../widgets/state_views.dart';
-import 'product_screen.dart';
 
-class HomeScreen extends StatefulWidget {
+// Ecranul principal: același design ca în Lab 2, dar datele vin din API.
+// Ecranul doar desenează starea primită de la HomeCubit.
+class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  Widget build(BuildContext context) {
+    return BlocBuilder<HomeCubit, HomeState>(
+      builder: (context, state) {
+        // Titlul din AppBar vine din API când e disponibil
+        final title = state is HomeLoaded ? state.feed.storeName : 'GemStore';
+        return Scaffold(
+          appBar: AppBar(
+            backgroundColor: const Color(0xFFF7F5F3),
+            elevation: 0,
+            leading: const Icon(Icons.menu, color: Colors.black),
+            title: Text(title,
+                style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+            centerTitle: true,
+            actions: const [
+              Padding(
+                padding: EdgeInsets.only(right: 16),
+                child: Icon(Icons.notifications_none, color: Colors.black),
+              ),
+            ],
+          ),
+          // switch pe starea sealed: câte un widget pentru fiecare stare
+          body: switch (state) {
+            HomeLoading() => const LoadingView(),
+            HomeError(:final message) =>
+              ErrorView(message: message, onRetry: context.read<HomeCubit>().load),
+            HomeLoaded(:final feed) => _HomeContent(feed: feed),
+          },
+        );
+      },
+    );
+  }
 }
 
-// StatefulWidget doar pentru TextEditingController (trebuie creat și distrus - dispose).
-// Datele produselor NU sunt aici, ci în ProductsCubit.
-class _HomeScreenState extends State<HomeScreen> {
-  final _searchController = TextEditingController();
-
-  // (slug-ul trimis la API, textul afișat)
-  static const _categories = <(String?, String)>[
-    (null, 'All'),
-    ('womens-dresses', 'Dresses'),
-    ('tops', 'Tops'),
-    ('mens-shirts', 'Men shirts'),
-    ('womens-bags', 'Bags'),
-    ('womens-shoes', 'Shoes'),
-  ];
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
+class _HomeContent extends StatelessWidget {
+  final HomeFeed feed;
+  const _HomeContent({required this.feed});
 
   @override
   Widget build(BuildContext context) {
-    // context.read = ia cubit-ul din BlocProvider (fără să asculte schimbările)
-    final cubit = context.read<ProductsCubit>();
+    final hero = feed.heroBanner;
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      children: [
+        _categoryRow(feed.categories),
+        const SizedBox(height: 16),
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('GemStore'), centerTitle: true),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            child: TextField(
-              controller: _searchController,
-              textInputAction: TextInputAction.search,
-              decoration: InputDecoration(
-                hintText: 'Caută produse...',
-                prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        // Hero banner: titlu + buton + puncte de slider
+        BannerCard(
+          imageUrl: hero.imageUrl,
+          height: 188,
+          title: hero.title,
+          titleSize: 22,
+          bottom: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(hero.action, style: const TextStyle(fontSize: 12)),
               ),
-              onSubmitted: cubit.search, // la Enter -> cubit.search -> cerere HTTP
-            ),
-          ),
-          BlocBuilder<ProductsCubit, ProductsState>(
-            buildWhen: (_, __) => true,
-            builder: (context, _) => SizedBox(
-              height: 44,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: _categories.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 8),
-                itemBuilder: (_, i) {
-                  final (slug, label) = _categories[i];
-                  return ChoiceChip(
-                    label: Text(label),
-                    selected: cubit.category == slug,
-                    onSelected: (_) {
-                      _searchController.clear();
-                      cubit.selectCategory(slug);
-                    },
-                  );
-                },
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Expanded(
-            // BlocBuilder se reconstruiește la fiecare emit() din cubit.
-            // switch pe starea sealed => câte un widget pentru fiecare stare.
-            child: BlocBuilder<ProductsCubit, ProductsState>(
-              builder: (context, state) {
-                return switch (state) {
-                  ProductsLoading() => const LoadingView(),
-                  ProductsError(:final message) =>
-                    ErrorView(message: message, onRetry: cubit.load),
-                  ProductsEmpty() => const EmptyView(),
-                  ProductsLoaded(:final products) => GridView.builder(
-                      padding: const EdgeInsets.all(16),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        mainAxisSpacing: 16,
-                        crossAxisSpacing: 12,
-                        childAspectRatio: 0.68,
-                      ),
-                      itemCount: products.length,
-                      itemBuilder: (_, i) => ProductCard(
-                        product: products[i],
-                        // Navigator.push = deschide ecranul de detalii peste cel curent.
-                        // Creăm un cubit nou pentru ecranul de detalii și îl pornim cu load(id).
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => BlocProvider(
-                              create: (_) => ProductDetailsCubit(
-                                GetProductById(context.read<ProductRepository>()),
-                              )..load(products[i].id),
-                              child: const ProductScreen(),
-                            ),
-                          ),
-                        ),
-                      ),
+              const Spacer(),
+              Row(
+                children: List.generate(
+                  hero.slides,
+                  (i) => Container(
+                    width: 6,
+                    height: 6,
+                    margin: const EdgeInsets.only(left: 4),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: i == hero.activeSlide ? Colors.white : Colors.white54,
                     ),
-                };
-              },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        const SectionHeader('Feature Products'),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 232,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: feed.featureProducts.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            itemBuilder: (_, i) => ProductCard(
+              product: feed.featureProducts[i],
+              onTap: () => openProduct(context, feed.featureProducts[i].id),
             ),
           ),
+        ),
+        const SizedBox(height: 24),
+
+        BannerCard(
+          imageUrl: feed.newCollection.imageUrl,
+          height: 168,
+          label: feed.newCollection.label,
+          title: feed.newCollection.title,
+          titleSize: 22,
+        ),
+        const SizedBox(height: 24),
+
+        const SectionHeader('Recommended'),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 72,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: feed.recommended.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            itemBuilder: (_, i) => RecommendedCard(
+              product: feed.recommended[i],
+              onTap: () => openProduct(context, feed.recommended[i].id),
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        const SectionHeader('Top Collection'),
+        const SizedBox(height: 12),
+        // cardurile sunt unul sub altul, pe toată lățimea
+        for (final c in feed.topCollections) ...[
+          BannerCard(imageUrl: c.imageUrl, height: 150, label: c.label, title: c.title),
+          const SizedBox(height: 16),
         ],
-      ),
+
+        // cele 2 carduri de jos, unul lângă altul
+        Row(
+          children: [
+            for (var i = 0; i < feed.categoryPromos.length; i++)
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(right: i == 0 ? 12 : 0),
+                  child: BannerCard(
+                    imageUrl: feed.categoryPromos[i].imageUrl,
+                    height: 190,
+                    label: feed.categoryPromos[i].label,
+                    title: feed.categoryPromos[i].title,
+                    titleSize: 16,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  // Rândul cu categorii: iconița e SVG din rețea (SvgPicture.network)
+  Widget _categoryRow(List<CategoryItem> categories) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        for (final c in categories)
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                child: Center(
+                  child: SvgPicture.network(
+                    c.iconUrl,
+                    width: 26,
+                    height: 26,
+                    placeholderBuilder: (_) => const SizedBox(width: 26, height: 26),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                c.name,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: c.selected ? Colors.black : Colors.grey,
+                  fontWeight: c.selected ? FontWeight.w600 : FontWeight.normal,
+                ),
+              ),
+            ],
+          ),
+      ],
     );
   }
 }

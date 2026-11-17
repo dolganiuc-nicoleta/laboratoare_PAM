@@ -1,12 +1,22 @@
 import 'package:flutter/material.dart';
 
-// Componente reutilizabile pentru stările Loading / Error / Empty.
+// Componente reutilizabile pentru stările Loading / Error.
 class LoadingView extends StatelessWidget {
   const LoadingView({super.key});
 
   @override
-  Widget build(BuildContext context) =>
-      const Center(child: CircularProgressIndicator());
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircularProgressIndicator(),
+          SizedBox(height: 12),
+          Text('Se încarcă...', style: TextStyle(color: Colors.grey)),
+        ],
+      ),
+    );
+  }
 }
 
 class ErrorView extends StatelessWidget {
@@ -32,12 +42,4 @@ class ErrorView extends StatelessWidget {
       ),
     );
   }
-}
-
-class EmptyView extends StatelessWidget {
-  const EmptyView({super.key});
-
-  @override
-  Widget build(BuildContext context) =>
-      const Center(child: Text('Nu s-au găsit produse.'));
 }

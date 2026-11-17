@@ -6,7 +6,7 @@ sealed class Failure {
 }
 
 class NetworkFailure extends Failure {
-  const NetworkFailure([super.message = 'Nu ai conexiune la internet.']);
+  const NetworkFailure([super.message = 'Nu s-a putut contacta serverul. Verifică internetul și reîncearcă (serverul gratuit poate porni lent).']);
 }
 
 class ServerFailure extends Failure {
